@@ -3,11 +3,16 @@ using UnityEngine;
 public class PresentCard : MonoBehaviour
 {
     [SerializeField, Range(0f, 10f)] float playSpeed;
-    [SerializeField, Range(0f, 40f)] float rotationRange;
+    [SerializeField, Range(0f, 40f)] float rotationHorizontalRange;
+    [SerializeField, Range(0f, 40f)] float rotationVerticalRange;
     
     void Update()
     {
-        float targetRotation = Mathf.Sin(Time.time * playSpeed) * rotationRange;
-        transform.localRotation = Quaternion.AngleAxis(targetRotation, transform.up);
+        float horizontalRotation = Mathf.Sin(Time.time * playSpeed) * rotationHorizontalRange;
+        float verticalRotation = Mathf.Cos(Time.time * playSpeed) * rotationVerticalRange;
+        
+        transform.localRotation = 
+            Quaternion.AngleAxis(horizontalRotation, transform.up) *
+            Quaternion.AngleAxis(verticalRotation, transform.right);
     }
 }
