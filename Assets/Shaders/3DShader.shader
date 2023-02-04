@@ -2,6 +2,7 @@ Shader "Example/3D"
 {
     Properties
     { 
+        [Toggle] _EnableFrameBreak("Use Frame Break", Int) = 1
         // textures
         [NoScaleOffset] _BorderMap("Border Map", 2D) = "white" {}
         [NoScaleOffset] _AlphaMap("Alpha Map", 2D) = "white" {}
@@ -9,9 +10,10 @@ Shader "Example/3D"
         [MainTexture] _MidgroundMap("Midground Map", 2D) = "white" {}
         _TitleMap("Title Map", 2D) = "white" {}
         // distance
-        _BackgroundDistance("Background Distance", Range(0.0, 1.0)) = 0.0
-        _MidgroundDistance("Midground Distance", Range(0.0, 1.0)) = 0.0
-        _TitleDistance("Title Distance", Range(-0.5, 0.0)) = 0.0
+        _BackgroundDistance("Background Distance", Range(0.0, 2.0)) = 0.0
+        _Midground3DDistance("Midground 3D Distance", Range(-0.5, 1.0)) = 0.0
+        _MidgroundFramebreakDistance("Midground Framebreak Distance", Range(-0.5, 1.0)) = 0.0
+        _TitleDistance("Title Distance", Range(-1.0, 0.0)) = 0.0
     }
 
     SubShader
@@ -34,7 +36,8 @@ Shader "Example/3D"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-
+            #pragma multi_compile
+            
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"            
 
             // Card border texture
@@ -57,7 +60,7 @@ Shader "Example/3D"
             TEXTURE2D_HALF(_AlphaMap);
             SAMPLER(sampler_AlphaMap);
 
-            
+
             CBUFFER_START(UnityPerMaterial)
             // pack textures in buffer for TRANSFORM_TEX macro to work
             float4 _BorderMap_ST;
@@ -66,8 +69,10 @@ Shader "Example/3D"
             float4 _AlphaMap_ST;
             float4 _TitleMap_ST;
             // pack material properties
+            float _EnableFrameBreak;
             float _BackgroundDistance;
-            float _MidgroundDistance;
+            float _Midground3DDistance;
+            float _MidgroundFramebreakDistance;
             float _TitleDistance;
             CBUFFER_END
 
@@ -102,7 +107,8 @@ Shader "Example/3D"
 
                 // uv offsets controlled by distance settings per texture
                 float2 backgroundOffsetUV = float2(horizontal * _BackgroundDistance, vertical * _BackgroundDistance);
-                float2 midgroundOffsetUV = float2(horizontal * _MidgroundDistance, vertical * _MidgroundDistance);
+                float midDistance = _EnableFrameBreak ? _MidgroundFramebreakDistance : _Midground3DDistance;
+                float2 midgroundOffsetUV = float2(horizontal * midDistance, vertical * midDistance);
                 float2 titleOffsetUv = float2(horizontal * _TitleDistance, vertical * _TitleDistance);
 
                 // apply uv with offsets to output
@@ -131,15 +137,27 @@ Shader "Example/3D"
                 // restrict background to within frame (alpha mask's red channel)
                 half1 bgAlpha = step(0.5, alphaCol.r);
 
-                // compute final color
-                half4 mid = midAlpha ? midCol : bgCol;
-                half4 bg = bgAlpha ? 0 : mid;
-                half4 border = borderAlpha ? borderCol : bg;
+                if(_EnableFrameBreak)
+                {
+                    // compute final color (frame break)
+                    half4 bg = bgAlpha ? 0 : bgCol;
+                    half4 border = borderAlpha ? borderCol : bg;
+                    half4 mid = midAlpha ? midCol : border;
 
-                // starting from title texture, go deeper using border->midground->background textures
-                return titleCol.a ? titleCol : border;
+                    return titleCol.a ? titleCol : mid;
+                }
+                else
+                {
+                    // compute final color (3D)
+                    half4 mid = midAlpha ? midCol : bgCol;
+                    half4 bg = bgAlpha ? 0 : mid;
+                    half4 border = borderAlpha ? borderCol : bg;
+
+                    // starting from title texture, go deeper using border->midground->background textures
+                    return titleCol.a ? titleCol : border;
+                }
             }
             ENDHLSL
         }
     }
-}
+        }
