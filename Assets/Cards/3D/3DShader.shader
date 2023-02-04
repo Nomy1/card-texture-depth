@@ -24,7 +24,6 @@ Shader "Example/3D"
         Tags 
         { 
             "RenderType" = "Transparent" 
-            "Queue" = "Transparent"
             "RenderPipeline" = "UniversalRenderPipeline" 
         }
 
@@ -82,13 +81,10 @@ Shader "Example/3D"
             struct v2f
             {
                 float4 vertex : SV_POSITION;
-                float3 normal : NORMAL;
-                float2 uv : TEXCOORD0;
-                float2 titleuv : TEXCOORD1;
-                float3 positionWS : TEXCOORD2;
-                float3 viewDir : TEXCOORD3;
-                float h : DEPTH0;
-                float v : DEPTH1;
+                float2 bgUV : TEXCOORD0;
+                float2 midUV : TEXCOORD1;
+                float2 borderUV : TEXCOORD2;
+                float2 titleUV : TEXCOORD3;
             };            
             
             v2f vert(appdata input)
@@ -96,84 +92,52 @@ Shader "Example/3D"
                 v2f output;
 
                 output.vertex = TransformObjectToHClip(input.vertex);
-                output.positionWS = TransformObjectToWorld(input.vertex);
-                output.normal = TransformObjectToWorldNormal(input.normal);
-                output.viewDir = normalize(GetWorldSpaceViewDir(output.positionWS));
-                
+
+                // calculate rotation with respect to camera view
                 const float3 cameraRight = mul((float3x3)unity_CameraToWorld, float3(1,0,0));
                 const float3 cameraUp = mul((float3x3)unity_CameraToWorld, float3(0,1,0));
+                const float3 normal = TransformObjectToWorldNormal(input.normal);
+                float horizontal = dot(normal, cameraRight);
+                float vertical = dot(normal, cameraUp);
 
-                float horizontal = dot(output.normal, cameraRight);
-                float vertical = dot(output.normal, cameraUp);
+                // uv offsets controlled by distance settings per texture
+                float2 backgroundOffsetUV = float2(horizontal * _BackgroundDistance, vertical * _BackgroundDistance);
+                float2 midgroundOffsetUV = float2(horizontal * _MidgroundDistance, vertical * _MidgroundDistance);
+                float2 titleOffsetUv = float2(horizontal * _TitleDistance, vertical * _TitleDistance);
 
-                output.h = horizontal;
-                output.v = vertical;
-                output.uv = TRANSFORM_TEX(input.uv, _BackgroundMap);
-                output.titleuv = TRANSFORM_TEX(input.uv, _TitleMap);
-
+                // apply uv with offsets to output
+                output.bgUV = TRANSFORM_TEX(input.uv + backgroundOffsetUV, _BackgroundMap);
+                output.midUV = TRANSFORM_TEX(input.uv + midgroundOffsetUV, _MidgroundMap);
+                output.titleUV = TRANSFORM_TEX(input.uv + titleOffsetUv, _TitleMap);
+                output.borderUV = TRANSFORM_TEX(input.uv, _BorderMap);
+                
                 return output;
             }
         
             half4 frag(v2f input) : SV_Target
             {
-                float2 titleOffsetUv = float2(input.h * _TitleDistance, input.v * _TitleDistance);
-                float4 titleCol = SAMPLE_TEXTURE2D(_TitleMap, sampler_TitleMap, input.titleuv + titleOffsetUv);
-                float4 alphaCol = SAMPLE_TEXTURE2D(_AlphaMap, sampler_AlphaMap, input.uv);
-                float4 borderCol = SAMPLE_TEXTURE2D(_BorderMap, sampler_BorderMap, input.uv);
-                float2 backgroundOffsetUV = float2(input.h * _BackgroundDistance, input.v * _BackgroundDistance);
-                float4 bgCol = SAMPLE_TEXTURE2D(_BackgroundMap, sampler_BackgroundMap, input.uv + backgroundOffsetUV);
-                float2 midgroundOffsetUV = float2(input.h * _MidgroundDistance, input.v * _MidgroundDistance);
-                float4 midCol = SAMPLE_TEXTURE2D(_MidgroundMap, sampler_MidgroundMap, input.uv + midgroundOffsetUV);
+                // alpha mask texture
+                float4 alphaCol = SAMPLE_TEXTURE2D(_AlphaMap, sampler_AlphaMap, input.borderUV);
 
+                // sample textures
+                float4 bgCol = SAMPLE_TEXTURE2D(_BackgroundMap, sampler_BackgroundMap, input.bgUV);
+                float4 midCol = SAMPLE_TEXTURE2D(_MidgroundMap, sampler_MidgroundMap, input.midUV);
+                float4 borderCol = SAMPLE_TEXTURE2D(_BorderMap, sampler_BorderMap, input.borderUV);
+                float4 titleCol = SAMPLE_TEXTURE2D(_TitleMap, sampler_TitleMap, input.titleUV);
+                
                 half1 borderAlpha = step(0.5, borderCol.a);
-                half1 bgAlpha = step(0.5, alphaCol.r);
                 half1 midAlpha = step(0.5, midCol.a);
-                    
-                half4 col = titleCol.a ?
-                    titleCol :
-                    (borderAlpha ?
-                        borderCol :
-                        bgAlpha ?
-                            half4(0,0,0,0) : !midAlpha ?
-                                bgCol : midCol);
-
-
-                /*
-                // if-else
-                //
-                float4 col = borderCol;
                 
-                if(titleCol.a > 0.1)
-                {
-                    col = titleCol;
-                }
-                else if(alphaCol.a < 0.8)
-                {
-                    if(midCol.a > 0.5)
-                    {
-                        col = midCol;
-                    }
-                    else
-                    {
-                         col = bgCol;
-                    }
-                } else
-                {
-                    if(borderCol.a > 0.9)
-                    {
-                        col = borderCol;
-                    }
-                    else
-                    {
-                        discard;
-                    }
-                }
-                */
-                
+                // restrict background to within frame (alpha mask's red channel)
+                half1 bgAlpha = step(0.5, alphaCol.r);
 
-                //float dotVal = dot(input.viewDir, input.normal);
-                
-                return col;
+                // compute final color
+                half4 mid = midAlpha ? midCol : bgCol;
+                half4 bg = bgAlpha ? 0 : mid;
+                half4 border = borderAlpha ? borderCol : bg;
+
+                // starting from title texture, go deeper using border->midground->background textures
+                return titleCol.a ? titleCol : border;
             }
             ENDHLSL
         }
