@@ -83,12 +83,12 @@ Shader "Example/3D"
             {
                 float4 vertex : SV_POSITION;
                 float3 normal : NORMAL;
-                float2 bgUV : TEXCOORD0;
-                float2 midUV : TEXCOORD1;
-                float2 borderUV : TEXCOORD2;
-                float3 positionWS : TEXCOORD3;
-                float2 titleUV : TEXCOORD4;
-                float3 viewDir : TEXCOORD5;
+                float2 uv : TEXCOORD0;
+                float2 titleuv : TEXCOORD1;
+                float3 positionWS : TEXCOORD2;
+                float3 viewDir : TEXCOORD3;
+                float h : DEPTH0;
+                float v : DEPTH1;
             };            
             
             v2f vert(appdata input)
@@ -106,29 +106,24 @@ Shader "Example/3D"
                 float horizontal = dot(output.normal, cameraRight);
                 float vertical = dot(output.normal, cameraUp);
 
-                // background
-                float2 backgroundOffsetUV = float2(horizontal * _BackgroundDistance, vertical * _BackgroundDistance);
-                output.bgUV = TRANSFORM_TEX(input.uv + backgroundOffsetUV, _BackgroundMap);
-                // midground
-                float2 midgroundOffsetUV = float2(horizontal * _MidgroundDistance, vertical * _MidgroundDistance);
-                output.midUV = TRANSFORM_TEX(input.uv + midgroundOffsetUV, _MidgroundMap);
-                // title
-                float2 titleOffsetUv = float2(horizontal * _TitleDistance, vertical * _TitleDistance);
-                output.titleUV = TRANSFORM_TEX(input.uv + titleOffsetUv, _TitleMap);
+                output.h = horizontal;
+                output.v = vertical;
+                output.uv = TRANSFORM_TEX(input.uv, _BackgroundMap);
+                output.titleuv = TRANSFORM_TEX(input.uv, _TitleMap);
 
-                // border
-                output.borderUV = TRANSFORM_TEX(input.uv, _BorderMap);
-                
                 return output;
             }
         
             half4 frag(v2f input) : SV_Target
             {
-                float4 titleCol = SAMPLE_TEXTURE2D(_TitleMap, sampler_TitleMap, input.titleUV);
-                float4 alphaCol = SAMPLE_TEXTURE2D(_AlphaMap, sampler_AlphaMap, input.borderUV);
-                float4 borderCol = SAMPLE_TEXTURE2D(_BorderMap, sampler_BorderMap, input.borderUV);
-                float4 bgCol = SAMPLE_TEXTURE2D(_BackgroundMap, sampler_BackgroundMap, input.bgUV);
-                float4 midCol = SAMPLE_TEXTURE2D(_MidgroundMap, sampler_MidgroundMap, input.midUV);
+                float2 titleOffsetUv = float2(input.h * _TitleDistance, input.v * _TitleDistance);
+                float4 titleCol = SAMPLE_TEXTURE2D(_TitleMap, sampler_TitleMap, input.titleuv + titleOffsetUv);
+                float4 alphaCol = SAMPLE_TEXTURE2D(_AlphaMap, sampler_AlphaMap, input.uv);
+                float4 borderCol = SAMPLE_TEXTURE2D(_BorderMap, sampler_BorderMap, input.uv);
+                float2 backgroundOffsetUV = float2(input.h * _BackgroundDistance, input.v * _BackgroundDistance);
+                float4 bgCol = SAMPLE_TEXTURE2D(_BackgroundMap, sampler_BackgroundMap, input.uv + backgroundOffsetUV);
+                float2 midgroundOffsetUV = float2(input.h * _MidgroundDistance, input.v * _MidgroundDistance);
+                float4 midCol = SAMPLE_TEXTURE2D(_MidgroundMap, sampler_MidgroundMap, input.uv + midgroundOffsetUV);
 
                 half1 borderAlpha = step(0.5, borderCol.a);
                 half1 bgAlpha = step(0.5, alphaCol.r);
